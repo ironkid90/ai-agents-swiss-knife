@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.mcp/
+server_run.out.log
+server_run.err.log
+dist/
+.env
