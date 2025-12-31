@@ -1,8 +1,8 @@
 @echo off
 setlocal
 
-set REPO_ROOT=%~dp0..
-set LOG_DIR=%REPO_ROOT%logs
+for %%I in ("%~dp0..") do set "REPO_ROOT=%%~fI"
+set "LOG_DIR=%REPO_ROOT%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
 set MCP_HOST=0.0.0.0
