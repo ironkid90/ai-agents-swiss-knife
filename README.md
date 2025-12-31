@@ -44,6 +44,26 @@ You can also configure:
 - `MCP_MAX_READ_BYTES` to change the default read size for `/fs/read`.
 - `MCP_EXCEL_LOCK_TIMEOUT_S` to change the Excel lock timeout (seconds).
 
+### MCP client config (VSCode, etc.)
+
+This project exposes HTTP endpoints. For MCP clients that require a stdio server,
+use the bundled bridge. Start the HTTP server first, then point your MCP client
+to the bridge:
+
+```json
+{
+  "mcpServers": {
+    "ai-agents-swiss-knife": {
+      "command": "python",
+      "args": ["-m", "server.mcp_bridge"],
+      "env": {
+        "MCP_BASE_URL": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
 ### API Endpoints
 
 #### Health

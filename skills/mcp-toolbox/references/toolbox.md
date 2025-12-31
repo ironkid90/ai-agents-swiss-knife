@@ -13,6 +13,25 @@
 - `MCP_HOST` and `MCP_PORT` control the server bind address and port.
 - `MCP_EXCEL_LOCK_TIMEOUT_S` controls the lock timeout for Excel writes.
 
+## MCP client config
+
+This server exposes HTTP endpoints. For MCP clients that require a stdio server,
+use the bundled bridge. Start the HTTP server first, then configure:
+
+```json
+{
+  "mcpServers": {
+    "ai-agents-swiss-knife": {
+      "command": "python",
+      "args": ["-m", "server.mcp_bridge"],
+      "env": {
+        "MCP_BASE_URL": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
 ## Endpoints
 
 ### /shell/exec (POST)
@@ -284,6 +303,7 @@ Locking: a file-based lock with suffix `.mcp.lock` is used; lock timeout is 5 se
 ## Server layout
 
 - `server/mcp_server.py` defines FastAPI endpoints and request schemas.
+- `server/mcp_bridge.py` provides an MCP stdio bridge to the HTTP server.
 - `server/tools/` contains tool modules: shell, fs, git_tools, excel_mcp, search_mcp, process_mcp, json_tools, zip_tools.
 - `server/config.py` defines ALLOWED_BASE_DIR and MAX_READ_BYTES.
 - `server/requirements.txt` lists dependencies (FastAPI, uvicorn, pydantic, openpyxl).
