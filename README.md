@@ -64,6 +64,24 @@ to the bridge:
 }
 ```
 
+### Windows service
+
+This uses WinSW (a Windows service wrapper). The install script downloads WinSW if needed.
+
+Run PowerShell as Administrator:
+
+```powershell
+.\scripts\install_service.ps1
+```
+
+To uninstall:
+
+```powershell
+.\scripts\uninstall_service.ps1
+```
+
+The service reads config generated from `scripts/winsw/ai-agents-swiss-knife.xml.template` and logs to `logs/server.out.log` and `logs/server.err.log`.
+
 ### API Endpoints
 
 #### Health

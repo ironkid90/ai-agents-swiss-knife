@@ -5,3 +5,6 @@ server_run.out.log
 server_run.err.log
 dist/
 .env
+logs/
+scripts/winsw/*.exe
+scripts/winsw/ai-agents-swiss-knife.xml

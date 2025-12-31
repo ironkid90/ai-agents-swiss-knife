@@ -32,6 +32,23 @@ use the bundled bridge. Start the HTTP server first, then configure:
 }
 ```
 
+## Windows service
+
+This uses WinSW (a Windows service wrapper). The install script downloads WinSW if needed and generates the config from `scripts/winsw/ai-agents-swiss-knife.xml.template`.
+
+Install (run PowerShell as Administrator):
+
+```powershell
+.\scripts\install_service.ps1
+```
+
+Uninstall:
+
+```powershell
+.\scripts\uninstall_service.ps1
+```
+
+Logs: `logs/server.out.log` and `logs/server.err.log`
 ## Endpoints
 
 ### /shell/exec (POST)
