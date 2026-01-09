@@ -23,10 +23,13 @@ pip install -r server/requirements.txt
 Run the MCP server using Python (which internally uses `uvicorn`):
 
 ```bash
-python server/mcp_server.py
+python -m server.mcp_server
 ```
 
-By default, the server listens on port 8000. You can change the host/port with
+Open the GUI in your browser at `http://localhost:8000/` (redirects to Swagger UI at
+`/docs`). You can also use `/redoc`.
+
+By default, the server listens on `127.0.0.1:8000`. You can change the host/port with
 the `MCP_HOST` and `MCP_PORT` environment variables.
 
 The allowed base directory for file operations defaults to the current working
@@ -35,7 +38,7 @@ environment variable `MCP_ALLOWED_BASE` before starting the server:
 
 ```bash
 export MCP_ALLOWED_BASE=/path/to/workspace
-python server/mcp_server.py
+python -m server.mcp_server
 ```
 
 You can also configure:

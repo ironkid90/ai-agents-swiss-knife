@@ -6,11 +6,17 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from server.config import MCP_HOST, MCP_PORT
 from server.tools import shell, fs, git_tools, excel_mcp, search_mcp, process_mcp, json_tools, zip_tools
 
 app = FastAPI(title="Local MCP Server for Codex")
+
+@app.get("/", include_in_schema=False)
+def root():
+    """Landing page: send humans to the interactive API docs (Swagger UI)."""
+    return RedirectResponse(url="/docs")
 
 @app.get("/health")
 def health():
