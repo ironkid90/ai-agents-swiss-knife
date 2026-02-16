@@ -85,6 +85,28 @@ To uninstall:
 
 The service reads config generated from `scripts/winsw/ai-agents-swiss-knife.xml.template` and logs to `logs/server.out.log` and `logs/server.err.log`.
 
+### Response Envelope Contract
+
+All tool endpoints are expected to return a standardized envelope:
+
+```json
+{ "ok": true, "...tool_specific_fields": "..." }
+```
+
+or on failure:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "not_found|invalid_path|permission_denied|timeout|internal_error",
+    "message": "human-readable detail"
+  }
+}
+```
+
+Use `GET /tools/list` to discover endpoints; each tool description references this contract.
+
 ### API Endpoints
 
 #### Health
