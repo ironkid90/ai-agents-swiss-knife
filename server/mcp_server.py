@@ -8,8 +8,9 @@ if __package__ is None or __package__ == "":
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from server.config import MCP_HOST, MCP_PORT
+from server.config import MCP_HOST, MCP_PORT, MCP_MINIMAL_MODE
 from server.tools import shell, fs, git_tools, excel_mcp, search_mcp, process_mcp, json_tools, zip_tools
+from server.tool_catalog import enrich_tool_definition, tool_in_minimal_mode
 
 app = FastAPI(title="Local MCP Server for Codex")
 
@@ -281,7 +282,7 @@ def _model_schema(model: type[BaseModel]) -> dict:
 
 @app.get("/tools/list")
 def tools_list():
-    tools = [
+    base_tools = [
         {"name": "health", "method": "GET", "path": "/health", "description": "Health check"},
         {"name": "shell.exec", "method": "POST", "path": "/shell/exec", "description": "Execute a shell command", "request_schema": _model_schema(ShellExecRequest)},
         {"name": "fs.read", "method": "POST", "path": "/fs/read", "description": "Read a file", "request_schema": _model_schema(FSReadRequest)},
@@ -306,7 +307,13 @@ def tools_list():
         {"name": "excel.commit_write", "method": "POST", "path": "/excel/commit_write", "description": "Commit write", "request_schema": _model_schema(ExcelPreviewRequest)},
         {"name": "excel.find", "method": "POST", "path": "/excel/find", "description": "Find values", "request_schema": _model_schema(ExcelFindRequest)},
     ]
-    return {"ok": True, "tools": tools}
+
+    tools = [enrich_tool_definition(tool) for tool in base_tools]
+    if MCP_MINIMAL_MODE:
+        tools = [tool for tool in tools if tool_in_minimal_mode(tool["name"])]
+
+    tools.sort(key=lambda item: item.get("recommended_workflow_order", 999))
+    return {"ok": True, "minimal_mode": MCP_MINIMAL_MODE, "tools": tools}
 
 
 if __name__ == "__main__":
