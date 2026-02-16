@@ -365,7 +365,11 @@ def tools_list():
     return {"ok": True, "minimal_mode": MCP_MINIMAL_MODE, "tools": tools}
 
 
-if __name__ == "__main__":
+def run() -> None:
     import uvicorn
 
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
+
+
+if __name__ == "__main__":
+    run()

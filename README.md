@@ -15,7 +15,20 @@ minimal yet powerful set of tools via HTTP endpoints. The tools include:
 - Install dependencies:
 
 ```bash
-pip install -r server/requirements.txt
+pip install -e .
+```
+
+### One-command local bootstrap
+
+Use the setup script for your shell. It creates `.venv`, installs the package, starts
+the server, and validates `GET /health`.
+
+```bash
+./scripts/setup_local.sh
+```
+
+```powershell
+.\scripts\setup_local.ps1
 ```
 
 ### Running the server
@@ -23,13 +36,15 @@ pip install -r server/requirements.txt
 Run the MCP server using Python (which internally uses `uvicorn`):
 
 ```bash
+ai-agents-swiss-knife-server
+# or
 python -m server.mcp_server
 ```
 
-Open the GUI in your browser at `http://localhost:8000/` (redirects to Swagger UI at
+Open the GUI in your browser at `http://localhost:8080/` (redirects to Swagger UI at
 `/docs`). You can also use `/redoc`.
 
-By default, the server listens on `127.0.0.1:8000`. You can change the host/port with
+By default, the server listens on `127.0.0.1:8080`. You can change the host/port with
 the `MCP_HOST` and `MCP_PORT` environment variables.
 
 The allowed base directory for file operations defaults to the current working
@@ -38,6 +53,8 @@ environment variable `MCP_ALLOWED_BASE` before starting the server:
 
 ```bash
 export MCP_ALLOWED_BASE=/path/to/workspace
+ai-agents-swiss-knife-server
+# or
 python -m server.mcp_server
 ```
 
@@ -73,25 +90,27 @@ python -m server.mcp_server
 `recommended_workflow_order`, and optional deprecation/replacement guidance to help
 clients choose safer workflows.
 
-### MCP client config (VSCode, etc.)
+### MCP client config templates
 
-This project exposes HTTP endpoints. For MCP clients that require a stdio server,
-use the bundled bridge. Start the HTTP server first, then point your MCP client
-to the bridge:
+Template configs are provided under `configs/clients/`:
 
-```json
-{
-  "mcpServers": {
-    "ai-agents-swiss-knife": {
-      "command": "python",
-      "args": ["-m", "server.mcp_bridge"],
-      "env": {
-        "MCP_BASE_URL": "http://localhost:8000"
-      }
-    }
-  }
-}
+- `codex-cli.mcp.json`
+- `gemini-cli.mcp.json`
+- `generic-mcp-jsonrpc-stdio.json`
+
+Use `--print-config` to output validated, copy/paste-ready bridge settings:
+
+```bash
+ai-agents-swiss-knife-bridge --print-config
 ```
+
+### Client matrix
+
+| Client | Transport mode | Config file location (typical) | Known limitations |
+|---|---|---|---|
+| Codex CLI | MCP over stdio via `ai-agents-swiss-knife-bridge` | User MCP config (copy from `configs/clients/codex-cli.mcp.json`) | Requires HTTP server to be running first. |
+| Gemini CLI | MCP over stdio via `ai-agents-swiss-knife-bridge` | User MCP config (copy from `configs/clients/gemini-cli.mcp.json`) | Depends on CLI MCP support version; tool output is returned as JSON text content. |
+| Generic MCP JSON-RPC client | MCP JSON-RPC over stdio via bridge | Client-specific JSON config (use `configs/clients/generic-mcp-jsonrpc-stdio.json`) | This repo currently exposes MCP through stdio bridge only (not Streamable HTTP MCP). |
 
 ### Windows service
 
@@ -191,7 +210,7 @@ Use `GET /tools/list` to discover endpoints; each tool description references th
 Run the server, then from another terminal you can call:
 
 ```bash
-curl -X POST http://localhost:8000/shell/exec \
+curl -X POST http://localhost:8080/shell/exec \
   -H "Content-Type: application/json" \
   -d '{"cmd":"ls -la", "cwd":"."}'
 ```
