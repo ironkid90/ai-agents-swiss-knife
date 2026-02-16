@@ -346,13 +346,14 @@ def gui_data(
     policy_offset: int = Query(0, ge=0),
     policy_limit: int = Query(10, ge=1, le=100),
 ):
+    process_snapshot = process_mcp.active_processes_snapshot()
     return {
         "ok": True,
         "health": {"ok": True},
         "history": telemetry.get_tool_history(offset=history_offset, limit=history_limit),
         "policy_denials": telemetry.get_policy_denials(offset=policy_offset, limit=policy_limit),
         "error_counters": telemetry.get_error_counters(),
-        "processes": {"items": process_mcp.active_processes_snapshot()},
+        "processes": {"total": len(process_snapshot), "items": process_snapshot},
     }
 
 
