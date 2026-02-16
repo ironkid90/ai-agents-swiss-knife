@@ -399,6 +399,7 @@ def tools_list():
 
 
 def main() -> None:
+def run() -> None:
     import uvicorn
 
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
@@ -406,3 +407,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    run()

@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import sys
@@ -6,15 +7,27 @@ from urllib import error, request
 
 from server.mcp_transport import MCPTransport
 
-BASE_URL = os.environ.get("MCP_BASE_URL", "http://localhost:8000").rstrip("/")
+DEFAULT_BASE_URL = "http://localhost:8080"
 SERVER_NAME = "ai-agents-swiss-knife"
 SERVER_VERSION = "0.1.0"
 PROTOCOL_VERSION = "2024-11-05"
 TOOLS_CACHE_TTL_S = float(os.environ.get("MCP_TOOLS_CACHE_TTL_S", "5"))
 
 
-def _http_json(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    url = f"{BASE_URL}{path}"
+def _validated_base_url(raw_url: Optional[str]) -> str:
+    candidate = (raw_url or os.environ.get("MCP_BASE_URL") or DEFAULT_BASE_URL).strip()
+    parsed = parse.urlsplit(candidate)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("MCP_BASE_URL must start with http:// or https://")
+    if not parsed.netloc:
+        raise ValueError("MCP_BASE_URL must include a host (and optional port)")
+    path = parsed.path.rstrip("/")
+    normalized = parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+    return normalized
+
+
+def _http_json(base_url: str, method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    url = f"{base_url}{path}"
     data = None
     headers = {"Content-Type": "application/json"}
     if payload is not None:
@@ -89,7 +102,48 @@ def _call_tool(tool: Dict[str, Any], arguments: Dict[str, Any]) -> Dict[str, Any
     return _http_json("POST", path, arguments)
 
 
+def _print_config(base_url: str) -> int:
+    health = _http_json(base_url, "GET", "/health")
+    config = {
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "protocolVersion": PROTOCOL_VERSION,
+        "baseUrl": base_url,
+        "healthUrl": f"{base_url}/health",
+        "toolsUrl": f"{base_url}/tools/list",
+        "health": health,
+        "bridgeCommand": {
+            "command": "ai-agents-swiss-knife-bridge",
+            "env": {"MCP_BASE_URL": base_url},
+        },
+    }
+    print(json.dumps(config, indent=2))
+    return 0
+
+
+def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="MCP stdio bridge for ai-agents-swiss-knife")
+    parser.add_argument("--base-url", help="Override MCP_BASE_URL for this run")
+    parser.add_argument(
+        "--print-config",
+        action="store_true",
+        help="Print validated bridge connection settings as JSON and exit",
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> None:
+    args = _parse_args()
+    try:
+        base_url = _validated_base_url(args.base_url)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(2)
+
+    if args.print_config:
+        raise SystemExit(_print_config(base_url))
+
+    tools_cache = _get_tools_cache(base_url)
     transport = MCPTransport(
         server_name=SERVER_NAME,
         server_version=SERVER_VERSION,
@@ -105,6 +159,12 @@ def main() -> None:
         req = _read_message()
         if req is None:
             break
+        if req.get("method") == "shutdown":
+            resp = _handle_request(base_url, req, tools_cache)
+            if resp:
+                _send_message(resp)
+            break
+        resp = _handle_request(base_url, req, tools_cache)
         resp = transport.handle_request(req)
         if resp:
             _send_message(resp)

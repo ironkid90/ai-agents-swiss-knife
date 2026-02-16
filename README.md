@@ -28,6 +28,20 @@ From this repository root:
 
 ```bash
 python -m pip install .
+pip install -e .
+```
+
+### One-command local bootstrap
+
+Use the setup script for your shell. It creates `.venv`, installs the package, starts
+the server, and validates `GET /health`.
+
+```bash
+./scripts/setup_local.sh
+```
+
+```powershell
+.\scripts\setup_local.ps1
 ```
 
 This installs two CLI entry points:
@@ -49,6 +63,15 @@ Defaults:
 - Port: `8000`
 - UI: `http://127.0.0.1:8000/`
 - OpenAPI docs: `http://127.0.0.1:8000/docs`
+# or
+python -m server.mcp_server
+```
+
+Open the GUI in your browser at `http://localhost:8080/` (redirects to Swagger UI at
+`/docs`). You can also use `/redoc`.
+
+By default, the server listens on `127.0.0.1:8080`. You can change the host/port with
+the `MCP_HOST` and `MCP_PORT` environment variables.
 
 ### 3) Point Codex CLI to the bridge
 
@@ -59,6 +82,11 @@ Add:
 [mcp_servers.ai_agents_swiss_knife]
 command = "ai-agents-swiss-knife-bridge"
 env = { MCP_BASE_URL = "http://127.0.0.1:8000" }
+```bash
+export MCP_ALLOWED_BASE=/path/to/workspace
+ai-agents-swiss-knife-server
+# or
+python -m server.mcp_server
 ```
 
 If you prefer module form:
@@ -108,6 +136,29 @@ Modes:
 - **Advanced bundle** (default): full toolset
 
 ---
+### MCP client config templates
+
+Template configs are provided under `configs/clients/`:
+
+- `codex-cli.mcp.json`
+- `gemini-cli.mcp.json`
+- `generic-mcp-jsonrpc-stdio.json`
+
+Use `--print-config` to output validated, copy/paste-ready bridge settings:
+
+```bash
+ai-agents-swiss-knife-bridge --print-config
+```
+
+### Client matrix
+
+| Client | Transport mode | Config file location (typical) | Known limitations |
+|---|---|---|---|
+| Codex CLI | MCP over stdio via `ai-agents-swiss-knife-bridge` | User MCP config (copy from `configs/clients/codex-cli.mcp.json`) | Requires HTTP server to be running first. |
+| Gemini CLI | MCP over stdio via `ai-agents-swiss-knife-bridge` | User MCP config (copy from `configs/clients/gemini-cli.mcp.json`) | Depends on CLI MCP support version; tool output is returned as JSON text content. |
+| Generic MCP JSON-RPC client | MCP JSON-RPC over stdio via bridge | Client-specific JSON config (use `configs/clients/generic-mcp-jsonrpc-stdio.json`) | This repo currently exposes MCP through stdio bridge only (not Streamable HTTP MCP). |
+
+### Windows service
 
 ## Dashboard and telemetry
 
@@ -182,6 +233,9 @@ Install editable:
 
 ```bash
 python -m pip install -e .
+curl -X POST http://localhost:8080/shell/exec \
+  -H "Content-Type: application/json" \
+  -d '{"cmd":"ls -la", "cwd":"."}'
 ```
 
 Run:
