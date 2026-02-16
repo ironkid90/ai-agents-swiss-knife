@@ -223,3 +223,24 @@ def list_processes() -> Dict[str, object]:
         if info.get("ok"):
             items.append(info)
     return {"ok": True, "processes": items}
+
+
+def active_processes_snapshot() -> List[Dict[str, Any]]:
+    """Return lightweight snapshot of active tracked process metadata."""
+    snapshots: List[Dict[str, Any]] = []
+    with _PROC_LOCK:
+        entries = list(_PROCS.items())
+    for pid, entry in entries:
+        proc = entry.get("proc")
+        snapshots.append(
+            {
+                "pid": pid,
+                "running": proc.poll() is None if proc else False,
+                "returncode": proc.returncode if proc else None,
+                "cmd": entry.get("cmd"),
+                "cwd": entry.get("cwd"),
+                "start_time": entry.get("start_time"),
+                "capture_output": entry.get("capture_output", False),
+            }
+        )
+    return snapshots
