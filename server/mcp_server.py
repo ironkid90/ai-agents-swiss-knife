@@ -9,9 +9,9 @@ from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from server.config import MCP_HOST, MCP_PORT
+from server.config import MCP_HOST, MCP_PORT, MCP_MINIMAL_MODE
 from server.tools import shell, fs, git_tools, excel_mcp, search_mcp, process_mcp, json_tools, zip_tools
-from server import telemetry
+from server.tool_catalog import enrich_tool_definition, tool_in_minimal_mode
 
 app = FastAPI(title="Local MCP Server for Codex")
 _UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -331,68 +331,38 @@ def _model_schema(model: type[BaseModel]) -> dict:
 
 @app.get("/tools/list")
 def tools_list():
-    response_contract_ref = "See README: Response Envelope Contract."
-    tools = [
-        {"name": "health", "method": "GET", "path": "/health", "description": "Health check. See README: Response Envelope Contract."},
-        {"name": "shell.exec", "method": "POST", "path": "/shell/exec", "description": "Execute a shell command. See README: Response Envelope Contract.", "request_schema": _model_schema(ShellExecRequest)},
-        {"name": "fs.read", "method": "POST", "path": "/fs/read", "description": "Read a file. See README: Response Envelope Contract.", "request_schema": _model_schema(FSReadRequest)},
-        {"name": "fs.write", "method": "POST", "path": "/fs/write", "description": "Write a file. See README: Response Envelope Contract.", "request_schema": _model_schema(FSWriteRequest)},
-        {"name": "fs.list", "method": "POST", "path": "/fs/list", "description": "List directory contents. See README: Response Envelope Contract.", "request_schema": _model_schema(FSListRequest)},
-        {"name": "fs.stat", "method": "POST", "path": "/fs/stat", "description": "Stat a file or directory. See README: Response Envelope Contract.", "request_schema": _model_schema(FSStatRequest)},
-        {"name": "git.status", "method": "POST", "path": "/git/status", "description": "Git status. See README: Response Envelope Contract.", "request_schema": _model_schema(GitRequest)},
-        {"name": "git.diff", "method": "POST", "path": "/git/diff", "description": "Git diff. See README: Response Envelope Contract.", "request_schema": _model_schema(GitRequest)},
-        {"name": "git.commit", "method": "POST", "path": "/git/commit", "description": "Git commit. See README: Response Envelope Contract.", "request_schema": _model_schema(GitCommitRequest)},
-        {"name": "search.rg", "method": "POST", "path": "/search/rg", "description": "Ripgrep search. See README: Response Envelope Contract.", "request_schema": _model_schema(SearchRequest)},
-        {"name": "process.start", "method": "POST", "path": "/process/start", "description": "Start a process. See README: Response Envelope Contract.", "request_schema": _model_schema(ProcessStartRequest)},
-        {"name": "process.status", "method": "POST", "path": "/process/status", "description": "Process status. See README: Response Envelope Contract.", "request_schema": _model_schema(ProcessStatusRequest)},
-        {"name": "process.kill", "method": "POST", "path": "/process/kill", "description": "Kill a process started by the server. See README: Response Envelope Contract.", "request_schema": _model_schema(ProcessKillRequest)},
-        {"name": "process.read", "method": "POST", "path": "/process/read", "description": "Read process output. See README: Response Envelope Contract.", "request_schema": _model_schema(ProcessReadRequest)},
-        {"name": "process.list", "method": "POST", "path": "/process/list", "description": "List server-started processes. See README: Response Envelope Contract."},
-        {"name": "json.patch", "method": "POST", "path": "/json/patch", "description": "Apply JSON patch to file. See README: Response Envelope Contract.", "request_schema": _model_schema(JsonPatchRequest)},
-        {"name": "zip.pack", "method": "POST", "path": "/zip/pack", "description": "Create zip archive. See README: Response Envelope Contract.", "request_schema": _model_schema(ZipPackRequest)},
-        {"name": "zip.unpack", "method": "POST", "path": "/zip/unpack", "description": "Extract zip archive. See README: Response Envelope Contract.", "request_schema": _model_schema(ZipUnpackRequest)},
-        {"name": "excel.inspect", "method": "POST", "path": "/excel/inspect", "description": "Inspect workbook. See README: Response Envelope Contract.", "request_schema": _model_schema(ExcelInspectRequest)},
-        {"name": "excel.read_range", "method": "POST", "path": "/excel/read_range", "description": "Read range. See README: Response Envelope Contract.", "request_schema": _model_schema(ExcelReadRequest)},
-        {"name": "excel.preview_write", "method": "POST", "path": "/excel/preview_write", "description": "Preview write. See README: Response Envelope Contract.", "request_schema": _model_schema(ExcelPreviewRequest)},
-        {"name": "excel.commit_write", "method": "POST", "path": "/excel/commit_write", "description": "Commit write. See README: Response Envelope Contract.", "request_schema": _model_schema(ExcelPreviewRequest)},
-        {"name": "excel.find", "method": "POST", "path": "/excel/find", "description": "Find values. See README: Response Envelope Contract.", "request_schema": _model_schema(ExcelFindRequest)},
+    base_tools = [
+        {"name": "health", "method": "GET", "path": "/health", "description": "Health check"},
+        {"name": "shell.exec", "method": "POST", "path": "/shell/exec", "description": "Execute a shell command", "request_schema": _model_schema(ShellExecRequest)},
+        {"name": "fs.read", "method": "POST", "path": "/fs/read", "description": "Read a file", "request_schema": _model_schema(FSReadRequest)},
+        {"name": "fs.write", "method": "POST", "path": "/fs/write", "description": "Write a file", "request_schema": _model_schema(FSWriteRequest)},
+        {"name": "fs.list", "method": "POST", "path": "/fs/list", "description": "List directory contents", "request_schema": _model_schema(FSListRequest)},
+        {"name": "fs.stat", "method": "POST", "path": "/fs/stat", "description": "Stat a file or directory", "request_schema": _model_schema(FSStatRequest)},
+        {"name": "git.status", "method": "POST", "path": "/git/status", "description": "Git status", "request_schema": _model_schema(GitRequest)},
+        {"name": "git.diff", "method": "POST", "path": "/git/diff", "description": "Git diff", "request_schema": _model_schema(GitRequest)},
+        {"name": "git.commit", "method": "POST", "path": "/git/commit", "description": "Git commit", "request_schema": _model_schema(GitCommitRequest)},
+        {"name": "search.rg", "method": "POST", "path": "/search/rg", "description": "Ripgrep search", "request_schema": _model_schema(SearchRequest)},
+        {"name": "process.start", "method": "POST", "path": "/process/start", "description": "Start a process", "request_schema": _model_schema(ProcessStartRequest)},
+        {"name": "process.status", "method": "POST", "path": "/process/status", "description": "Process status", "request_schema": _model_schema(ProcessStatusRequest)},
+        {"name": "process.kill", "method": "POST", "path": "/process/kill", "description": "Kill a process started by the server", "request_schema": _model_schema(ProcessKillRequest)},
+        {"name": "process.read", "method": "POST", "path": "/process/read", "description": "Read process output", "request_schema": _model_schema(ProcessReadRequest)},
+        {"name": "process.list", "method": "POST", "path": "/process/list", "description": "List server-started processes"},
+        {"name": "json.patch", "method": "POST", "path": "/json/patch", "description": "Apply JSON patch to file", "request_schema": _model_schema(JsonPatchRequest)},
+        {"name": "zip.pack", "method": "POST", "path": "/zip/pack", "description": "Create zip archive", "request_schema": _model_schema(ZipPackRequest)},
+        {"name": "zip.unpack", "method": "POST", "path": "/zip/unpack", "description": "Extract zip archive", "request_schema": _model_schema(ZipUnpackRequest)},
+        {"name": "excel.inspect", "method": "POST", "path": "/excel/inspect", "description": "Inspect workbook", "request_schema": _model_schema(ExcelInspectRequest)},
+        {"name": "excel.read_range", "method": "POST", "path": "/excel/read_range", "description": "Read range", "request_schema": _model_schema(ExcelReadRequest)},
+        {"name": "excel.preview_write", "method": "POST", "path": "/excel/preview_write", "description": "Preview write", "request_schema": _model_schema(ExcelPreviewRequest)},
+        {"name": "excel.commit_write", "method": "POST", "path": "/excel/commit_write", "description": "Commit write", "request_schema": _model_schema(ExcelPreviewRequest)},
+        {"name": "excel.find", "method": "POST", "path": "/excel/find", "description": "Find values", "request_schema": _model_schema(ExcelFindRequest)},
     ]
-    response = {"ok": True, "tools": tools}
-    telemetry.record_tool_call("tools.list", "GET", "/tools/list", None, response)
-    return response
 
+    tools = [enrich_tool_definition(tool) for tool in base_tools]
+    if MCP_MINIMAL_MODE:
+        tools = [tool for tool in tools if tool_in_minimal_mode(tool["name"])]
 
-@app.get("/gui/data")
-def gui_data(
-    history_offset: int = Query(default=0, ge=0),
-    history_limit: int = Query(default=20, ge=1, le=100),
-    policy_offset: int = Query(default=0, ge=0),
-    policy_limit: int = Query(default=20, ge=1, le=100),
-):
-    payload = {
-        "history_offset": history_offset,
-        "history_limit": history_limit,
-        "policy_offset": policy_offset,
-        "policy_limit": policy_limit,
-    }
-
-    def _build():
-        history = telemetry.get_tool_history(history_offset, history_limit)
-        policy = telemetry.get_policy_denials(policy_offset, policy_limit)
-        return {
-            "ok": True,
-            "health": {"ok": True},
-            "history": history,
-            "processes": {
-                "total": len(process_mcp.active_processes_snapshot()),
-                "items": process_mcp.active_processes_snapshot(),
-            },
-            "policy_denials": policy,
-            "error_counters": telemetry.get_error_counters(),
-            "links": {"docs": "/docs", "redoc": "/redoc"},
-        }
-
-    return _execute_tool("gui.data", "GET", "/gui/data", payload, _build)
+    tools.sort(key=lambda item: item.get("recommended_workflow_order", 999))
+    return {"ok": True, "minimal_mode": MCP_MINIMAL_MODE, "tools": tools}
 
 
 if __name__ == "__main__":
