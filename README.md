@@ -63,6 +63,32 @@ You can also configure:
 - `MCP_HOST` and `MCP_PORT` to change the bind address/port.
 - `MCP_MAX_READ_BYTES` to change the default read size for `/fs/read`.
 - `MCP_EXCEL_LOCK_TIMEOUT_S` to change the Excel lock timeout (seconds).
+- `MCP_MINIMAL_MODE` (`1`/`true`) to expose only the core safe bundle in `/tools/list`.
+
+### Tool bundles: core vs advanced
+
+The server now supports two discovery bundles (returned by `GET /tools/list`):
+
+- **Core bundle (minimal mode)**: high-value, read-focused, safer tools for lightweight clients.
+- **Advanced bundle (default)**: full toolset, including mutation and process-control operations.
+
+Enable core bundle mode:
+
+```bash
+export MCP_MINIMAL_MODE=1
+python -m server.mcp_server
+```
+
+Disable it (default full bundle):
+
+```bash
+unset MCP_MINIMAL_MODE
+python -m server.mcp_server
+```
+
+`/tools/list` now also includes each tool's `category`, `safety_level`,
+`recommended_workflow_order`, and optional deprecation/replacement guidance to help
+clients choose safer workflows.
 
 ### MCP client config templates
 
@@ -104,11 +130,33 @@ To uninstall:
 
 The service reads config generated from `scripts/winsw/ai-agents-swiss-knife.xml.template` and logs to `logs/server.out.log` and `logs/server.err.log`.
 
+### Response Envelope Contract
+
+All tool endpoints are expected to return a standardized envelope:
+
+```json
+{ "ok": true, "...tool_specific_fields": "..." }
+```
+
+or on failure:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "not_found|invalid_path|permission_denied|timeout|internal_error",
+    "message": "human-readable detail"
+  }
+}
+```
+
+Use `GET /tools/list` to discover endpoints; each tool description references this contract.
+
 ### API Endpoints
 
 #### Health
 - `GET /health` - Quick health check.
-- `GET /tools/list` - Tool discovery for agents (names, routes, request schema).
+- `GET /tools/list` - Tool discovery for agents (names, routes, request schema, category, safety level, workflow order, and guidance).
 - `GET /openapi.json` - OpenAPI schema for all endpoints (FastAPI default).
 
 #### Shell

@@ -3,26 +3,20 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, Sequence
 
 from ..config import ALLOWED_BASE_DIR
+from ..policy import (
+    build_audit_metadata,
+    check_execution_policy,
+    normalize_command,
+    policy_denied_response,
+    resolve_policy_cwd,
+)
 
 _PROC_LOCK = threading.Lock()
 _PROCS: Dict[int, Dict[str, Any]] = {}
 _PROC_DIR_NAME = ".mcp/process"
-
-
-def _resolve_cwd(cwd: Optional[str]) -> Optional[str]:
-    if cwd is None:
-        return None
-    p = Path(cwd)
-    if not p.is_absolute():
-        p = (ALLOWED_BASE_DIR / p).resolve()
-    else:
-        p = p.resolve()
-    if not str(p).startswith(str(ALLOWED_BASE_DIR.resolve())):
-        raise PermissionError("Path is outside allowed base directory")
-    return str(p)
 
 
 def _ensure_proc_dir() -> Path:
@@ -43,7 +37,7 @@ def _close_handles(entry: Dict[str, Any]) -> None:
 
 
 def start(
-    cmd: str,
+    cmd: str | Sequence[str],
     cwd: Optional[str] = None,
     env: Optional[dict] = None,
     capture_output: bool = True,
@@ -51,12 +45,26 @@ def start(
     """
     Start a long-running process and return its PID.
     """
-    if not cmd:
-        return {"ok": False, "error": "empty_cmd"}
+    argv, parse_error = normalize_command(cmd)
+    fallback_argv = [str(cmd)] if isinstance(cmd, str) else [str(p) for p in cmd]
+    audit = build_audit_metadata(argv or fallback_argv, "process.start")
+    if parse_error:
+        return policy_denied_response(parse_error, audit)
+
+    allowed, denied_reason = check_execution_policy(
+        tool_name="process.start",
+        argv=argv,
+        cwd=cwd,
+        env=env,
+        timeout_s=None,
+    )
+    if not allowed:
+        return policy_denied_response(denied_reason or "policy denied", audit)
+
     try:
-        resolved_cwd = _resolve_cwd(cwd)
+        resolved_cwd = resolve_policy_cwd(cwd)
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": str(e), "audit": audit}
     stdout_handle = None
     stderr_handle = None
     stdout_path = None
@@ -75,8 +83,8 @@ def start(
             stdout_stream = subprocess.DEVNULL
             stderr_stream = subprocess.DEVNULL
         proc = subprocess.Popen(
-            cmd,
-            shell=True,
+            argv,
+            shell=False,
             cwd=resolved_cwd,
             env=env,
             stdout=stdout_stream,
@@ -87,11 +95,11 @@ def start(
             stdout_handle.close()
         if stderr_handle:
             stderr_handle.close()
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": str(e), "audit": audit}
     with _PROC_LOCK:
         _PROCS[proc.pid] = {
             "proc": proc,
-            "cmd": cmd,
+            "cmd": argv,
             "cwd": resolved_cwd,
             "start_time": time.time(),
             "stdout_path": str(stdout_path) if stdout_path else None,
@@ -99,6 +107,7 @@ def start(
             "stdout_handle": stdout_handle,
             "stderr_handle": stderr_handle,
             "capture_output": capture_output,
+            "audit": audit,
         }
     return {
         "ok": True,
@@ -106,6 +115,7 @@ def start(
         "cwd": resolved_cwd,
         "stdout_path": str(stdout_path) if stdout_path else None,
         "stderr_path": str(stderr_path) if stderr_path else None,
+        "audit": audit,
     }
 
 
@@ -131,6 +141,7 @@ def status(pid: int) -> Dict[str, object]:
         "start_time": entry.get("start_time"),
         "stdout_path": entry.get("stdout_path"),
         "stderr_path": entry.get("stderr_path"),
+        "audit": entry.get("audit"),
     }
 
 
@@ -212,3 +223,24 @@ def list_processes() -> Dict[str, object]:
         if info.get("ok"):
             items.append(info)
     return {"ok": True, "processes": items}
+
+
+def active_processes_snapshot() -> List[Dict[str, Any]]:
+    """Return lightweight snapshot of active tracked process metadata."""
+    snapshots: List[Dict[str, Any]] = []
+    with _PROC_LOCK:
+        entries = list(_PROCS.items())
+    for pid, entry in entries:
+        proc = entry.get("proc")
+        snapshots.append(
+            {
+                "pid": pid,
+                "running": proc.poll() is None if proc else False,
+                "returncode": proc.returncode if proc else None,
+                "cmd": entry.get("cmd"),
+                "cwd": entry.get("cwd"),
+                "start_time": entry.get("start_time"),
+                "capture_output": entry.get("capture_output", False),
+            }
+        )
+    return snapshots
