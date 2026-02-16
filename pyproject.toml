@@ -4,6 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-agents-swiss-knife"
+version = "0.2.0"
+description = "Local MCP server and stdio bridge for Codex and MCP-compatible clients"
 version = "0.1.0"
 description = "Local MCP tool server with an HTTP API and stdio bridge"
 readme = "README.md"
@@ -16,6 +18,14 @@ dependencies = [
 ]
 
 [project.scripts]
+ai-agents-swiss-knife-server = "server.mcp_server:main"
+ai-agents-swiss-knife-bridge = "server.mcp_bridge:main"
+
+[tool.setuptools.packages.find]
+include = ["server*"]
+
+[tool.setuptools.package-data]
+server = ["ui/*.html", "ui/*.css", "ui/*.js"]
 ai-agents-swiss-knife-server = "server.mcp_server:run"
 ai-agents-swiss-knife-bridge = "server.mcp_bridge:main"
 
