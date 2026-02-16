@@ -26,7 +26,7 @@ def health():
 
 
 class ShellExecRequest(BaseModel):
-    cmd: str
+    cmd: str | list[str]
     cwd: str | None = None
     env: dict | None = None
     timeout_s: int = 60
@@ -133,7 +133,7 @@ def search_rg(req: SearchRequest):
 
 
 class ProcessStartRequest(BaseModel):
-    cmd: str
+    cmd: str | list[str]
     cwd: str | None = None
     env: dict | None = None
     capture_output: bool = True
