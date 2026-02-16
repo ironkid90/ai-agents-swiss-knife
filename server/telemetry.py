@@ -16,8 +16,8 @@ _POLICY_DENIALS: Deque[Dict[str, Any]] = deque(maxlen=_POLICY_MAX)
 _ERROR_COUNTERS: Counter[str] = Counter()
 
 _SECRET_PATTERNS = (
-    re.compile(r"(token|password|secret|api[_-]?key)\\s*[=:]\\s*[^\\s]+", re.IGNORECASE),
-    re.compile(r"bearer\\s+[a-z0-9._-]+", re.IGNORECASE),
+    re.compile(r"(token|password|secret|api[_-]?key)\s*[=:]\s*[^\s]+", re.IGNORECASE),
+    re.compile(r"bearer\s+[a-z0-9._-]+", re.IGNORECASE),
 )
 
 

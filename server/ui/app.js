@@ -24,6 +24,7 @@ function renderTabs() {
   tabsEl.innerHTML = '';
   for (const tab of tabs) {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = `tab ${tab === state.activeTab ? 'active' : ''}`;
     b.textContent = tab;
     b.onclick = () => setActiveTab(tab);
@@ -55,10 +56,12 @@ function renderHistoryPager(offset, limit, total, onPrev, onNext) {
   const div = document.createElement('div');
   div.className = 'pager';
   const prev = document.createElement('button');
+  prev.type = 'button';
   prev.textContent = 'Previous';
   prev.disabled = offset === 0;
   prev.onclick = onPrev;
   const next = document.createElement('button');
+  next.type = 'button';
   next.textContent = 'Next';
   next.disabled = offset + limit >= total;
   next.onclick = onNext;
@@ -120,6 +123,7 @@ function renderPanel() {
       }
 
       const submit = document.createElement('button');
+      submit.type = 'button';
       submit.textContent = 'Try Tool';
       submit.onclick = async () => {
         const payload = {};
@@ -164,9 +168,11 @@ function renderPanel() {
     select.onchange = renderToolForm;
     renderToolForm();
 
-    panel.innerHTML = '';
-    panel.append(card('Tool Form', ''));
-    panel.querySelector('.card').append(select, formContainer, result);
+    panel.innerHTML = card('Tool Form', '');
+    const toolCard = panel.querySelector('.card');
+    if (toolCard) {
+      toolCard.append(select, formContainer, result);
+    }
     return;
   }
 
