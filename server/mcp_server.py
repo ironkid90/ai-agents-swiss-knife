@@ -13,6 +13,8 @@ from server.tools import shell, fs, git_tools, excel_mcp, search_mcp, process_mc
 
 app = FastAPI(title="Local MCP Server for Codex")
 
+TOOLS_CATALOG_VERSION = "1"
+
 @app.get("/", include_in_schema=False)
 def root():
     """Landing page: send humans to the interactive API docs (Swagger UI)."""
@@ -306,7 +308,7 @@ def tools_list():
         {"name": "excel.commit_write", "method": "POST", "path": "/excel/commit_write", "description": "Commit write", "request_schema": _model_schema(ExcelPreviewRequest)},
         {"name": "excel.find", "method": "POST", "path": "/excel/find", "description": "Find values", "request_schema": _model_schema(ExcelFindRequest)},
     ]
-    return {"ok": True, "tools": tools}
+    return {"ok": True, "version": TOOLS_CATALOG_VERSION, "tools": tools}
 
 
 if __name__ == "__main__":
