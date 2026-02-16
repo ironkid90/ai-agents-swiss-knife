@@ -1,125 +1,152 @@
-## AI agent's swiss knife
+## AI Agent's Swiss Knife
 
-This project provides a **local MCP server** for AI agents. It exposes a
-minimal yet powerful set of tools via HTTP endpoints. The tools include:
+A local **MCP-oriented tool server** for coding agents.
 
-- **Shell** execution: run shell commands and get structured output.
-- **Filesystem**: read and write files with sandboxed path resolution.
-- **Git**: get status/diff and commit changes in a repository.
-- **Excel**: inspect, read, preview changes, and commit changes to Excel workbooks
-  (`.xlsx` files) using `openpyxl`. A simple file-based lock prevents concurrent edits.
+It exposes safe-by-default HTTP endpoints for:
 
-### Requirements
+- Shell execution
+- Filesystem read/write/list/stat
+- Git status/diff/commit
+- ripgrep search
+- Process lifecycle management
+- JSON patching
+- Zip packing/unpacking
+- Excel workbook inspection and edits (`.xlsx`)
 
-- Python 3.10+
-- Install dependencies:
+It also includes:
+
+- A small web dashboard (`/`) with logs/policy visibility
+- A stdio MCP bridge module for clients that expect stdio transport
+
+---
+
+## Quickstart (recommended)
+
+### 1) Install
+
+From this repository root:
 
 ```bash
-pip install -r server/requirements.txt
+python -m pip install .
 ```
 
-### Running the server
+This installs two CLI entry points:
 
-Run the MCP server using Python (which internally uses `uvicorn`):
+- `ai-agents-swiss-knife-server`
+- `ai-agents-swiss-knife-bridge`
+
+> Alternative (no install): `python -m server.mcp_server` and `python -m server.mcp_bridge`.
+
+### 2) Run the HTTP server
 
 ```bash
-python -m server.mcp_server
+ai-agents-swiss-knife-server
 ```
 
-Open the GUI in your browser at `http://localhost:8000/` (redirects to Swagger UI at
-`/docs`). You can also use `/redoc`.
+Defaults:
 
-By default, the server listens on `127.0.0.1:8000`. You can change the host/port with
-the `MCP_HOST` and `MCP_PORT` environment variables.
+- Host: `127.0.0.1`
+- Port: `8000`
+- UI: `http://127.0.0.1:8000/`
+- OpenAPI docs: `http://127.0.0.1:8000/docs`
 
-The allowed base directory for file operations defaults to the current working
-directory when the server is started. To change the sandbox root, set the
-environment variable `MCP_ALLOWED_BASE` before starting the server:
+### 3) Point Codex CLI to the bridge
+
+Codex CLI MCP servers are configured in `~/.codex/config.toml`.
+Add:
+
+```toml
+[mcp_servers.ai_agents_swiss_knife]
+command = "ai-agents-swiss-knife-bridge"
+env = { MCP_BASE_URL = "http://127.0.0.1:8000" }
+```
+
+If you prefer module form:
+
+```toml
+[mcp_servers.ai_agents_swiss_knife]
+command = "python"
+args = ["-m", "server.mcp_bridge"]
+cwd = "/absolute/path/to/ai-agents-swiss-knife"
+env = { MCP_BASE_URL = "http://127.0.0.1:8000" }
+```
+
+---
+
+## Environment variables
+
+- `MCP_ALLOWED_BASE`: sandbox root for path operations (default: process cwd)
+- `MCP_HOST`: bind host (default: `127.0.0.1`)
+- `MCP_PORT`: bind port (default: `8000`)
+- `MCP_MAX_READ_BYTES`: default `/fs/read` size cap
+- `MCP_EXCEL_LOCK_TIMEOUT_S`: Excel write lock timeout
+- `MCP_MINIMAL_MODE`: `1/true` to expose only core bundle in `/tools/list`
+- `MCP_TOOLS_CACHE_TTL_S`: bridge-side `/tools/list` cache TTL
+
+Example:
 
 ```bash
 export MCP_ALLOWED_BASE=/path/to/workspace
-python -m server.mcp_server
-```
-
-You can also configure:
-
-- `MCP_HOST` and `MCP_PORT` to change the bind address/port.
-- `MCP_MAX_READ_BYTES` to change the default read size for `/fs/read`.
-- `MCP_EXCEL_LOCK_TIMEOUT_S` to change the Excel lock timeout (seconds).
-- `MCP_MINIMAL_MODE` (`1`/`true`) to expose only the core safe bundle in `/tools/list`.
-
-### Tool bundles: core vs advanced
-
-The server now supports two discovery bundles (returned by `GET /tools/list`):
-
-- **Core bundle (minimal mode)**: high-value, read-focused, safer tools for lightweight clients.
-- **Advanced bundle (default)**: full toolset, including mutation and process-control operations.
-
-Enable core bundle mode:
-
-```bash
 export MCP_MINIMAL_MODE=1
-python -m server.mcp_server
+ai-agents-swiss-knife-server
 ```
 
-Disable it (default full bundle):
+---
 
-```bash
-unset MCP_MINIMAL_MODE
-python -m server.mcp_server
-```
+## Tool discovery bundles
 
-`/tools/list` now also includes each tool's `category`, `safety_level`,
-`recommended_workflow_order`, and optional deprecation/replacement guidance to help
-clients choose safer workflows.
+`GET /tools/list` returns enriched tool metadata including:
 
-### MCP client config (VSCode, etc.)
+- `category`
+- `safety_level`
+- `recommended_workflow_order`
+- optional deprecation/replacement guidance
 
-This project exposes HTTP endpoints. For MCP clients that require a stdio server,
-use the bundled bridge. Start the HTTP server first, then point your MCP client
-to the bridge:
+Modes:
+
+- **Core bundle** (`MCP_MINIMAL_MODE=1`): safer/high-value tools
+- **Advanced bundle** (default): full toolset
+
+---
+
+## Dashboard and telemetry
+
+UI endpoint:
+
+- `GET /` (serves dashboard)
+
+Telemetry endpoints:
+
+- `GET /gui/data`
+- `GET /telemetry/history`
+- `GET /telemetry/policy_denials`
+- `GET /telemetry/error_counters`
+
+---
+
+## API surface (summary)
+
+- Health: `/health`, `/tools/list`, `/openapi.json`
+- Shell: `/shell/exec`
+- Filesystem: `/fs/read`, `/fs/write`, `/fs/list`, `/fs/stat`
+- Git: `/git/status`, `/git/diff`, `/git/commit`
+- Search: `/search/rg`
+- Process: `/process/start`, `/process/status`, `/process/kill`, `/process/read`, `/process/list`
+- JSON: `/json/patch`
+- Zip: `/zip/pack`, `/zip/unpack`
+- Excel: `/excel/inspect`, `/excel/read_range`, `/excel/preview_write`, `/excel/commit_write`, `/excel/find`
+
+---
+
+## Standard response envelope
+
+Success:
 
 ```json
-{
-  "mcpServers": {
-    "ai-agents-swiss-knife": {
-      "command": "python",
-      "args": ["-m", "server.mcp_bridge"],
-      "env": {
-        "MCP_BASE_URL": "http://localhost:8000"
-      }
-    }
-  }
-}
+{ "ok": true, "...": "tool_specific_fields" }
 ```
 
-### Windows service
-
-This uses WinSW (a Windows service wrapper). The install script downloads WinSW if needed.
-
-Run PowerShell as Administrator:
-
-```powershell
-.\scripts\install_service.ps1
-```
-
-To uninstall:
-
-```powershell
-.\scripts\uninstall_service.ps1
-```
-
-The service reads config generated from `scripts/winsw/ai-agents-swiss-knife.xml.template` and logs to `logs/server.out.log` and `logs/server.err.log`.
-
-### Response Envelope Contract
-
-All tool endpoints are expected to return a standardized envelope:
-
-```json
-{ "ok": true, "...tool_specific_fields": "..." }
-```
-
-or on failure:
+Failure:
 
 ```json
 {
@@ -131,71 +158,34 @@ or on failure:
 }
 ```
 
-Use `GET /tools/list` to discover endpoints; each tool description references this contract.
+---
 
-### API Endpoints
+## Windows service
 
-#### Health
-- `GET /health` - Quick health check.
-- `GET /tools/list` - Tool discovery for agents (names, routes, request schema, category, safety level, workflow order, and guidance).
-- `GET /openapi.json` - OpenAPI schema for all endpoints (FastAPI default).
+PowerShell as Administrator:
 
-#### Shell
-- `POST /shell/exec` - Run a shell command.
-  - Parameters: `cmd` (string), optional `cwd`, `env` (object), `timeout_s` (int).
-  - Returns: `ok`, `exit_code`, `stdout`, `stderr`, `timestamp`.
-
-#### Filesystem
-- `POST /fs/read` - Read a file.
-  - Parameters: `path` (string), optional `max_bytes` (int).
-- `POST /fs/write` - Write or append to a file.
-  - Parameters: `path` (string), `content` (string), `mode` (`overwrite`/`append`).
-- `POST /fs/list` - List directory contents.
-  - Parameters: `path` (string), optional `recursive` (bool), `max_entries` (int).
-- `POST /fs/stat` - Stat a file or directory.
-  - Parameters: `path` (string).
-
-#### Git
-- `POST /git/status` - Get concise git status.
-  - Parameters: optional `cwd` (string).
-- `POST /git/diff` - Get diff of current changes.
-- `POST /git/commit` - Stage all changes and commit with a message.
-  - Parameters: `message` (string), optional `cwd` (string).
-
-#### Search
-- `POST /search/rg` - Ripgrep search with safe args.
-
-#### Process
-- `POST /process/start` - Start a long-running process.
-- `POST /process/status` - Check process status.
-- `POST /process/kill` - Terminate a server-started process.
-- `POST /process/read` - Read captured stdout/stderr from a server-started process.
-- `POST /process/list` - List server-started processes.
-
-#### JSON
-- `POST /json/patch` - Apply JSON Patch (RFC 6902) to a JSON file.
-
-#### Zip
-- `POST /zip/pack` - Create a zip archive.
-- `POST /zip/unpack` - Extract a zip archive.
-
-#### Excel
-- `POST /excel/inspect` - Inspect a workbook (sheets, named ranges, tables).
-- `POST /excel/read_range` - Read a range from a sheet.
-- `POST /excel/preview_write` - Preview changes to a range without saving.
-- `POST /excel/commit_write` - Commit changes to a range and save the workbook.
-- `POST /excel/find` - Search for values across a sheet or workbook.
-
-### Example
-
-Run the server, then from another terminal you can call:
-
-```bash
-curl -X POST http://localhost:8000/shell/exec \
-  -H "Content-Type: application/json" \
-  -d '{"cmd":"ls -la", "cwd":"."}'
+```powershell
+.\scripts\install_service.ps1
 ```
 
-The server returns JSON with `ok`, `exit_code`, `stdout`, and `stderr` fields.
+Uninstall:
 
-Use similar JSON requests to interact with filesystem, git, and Excel endpoints.
+```powershell
+.\scripts\uninstall_service.ps1
+```
+
+---
+
+## Development
+
+Install editable:
+
+```bash
+python -m pip install -e .
+```
+
+Run:
+
+```bash
+python -m server.mcp_server
+```

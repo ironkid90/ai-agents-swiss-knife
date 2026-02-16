@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from server.config import MCP_HOST, MCP_PORT, MCP_MINIMAL_MODE
 from server.tools import shell, fs, git_tools, excel_mcp, search_mcp, process_mcp, json_tools, zip_tools
 from server.tool_catalog import enrich_tool_definition, tool_in_minimal_mode
+from server import telemetry
 
 app = FastAPI(title="Local MCP Server for Codex")
 _UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -323,6 +324,38 @@ def excel_find(req: ExcelFindRequest):
     )
 
 
+@app.get("/telemetry/history")
+def telemetry_history(offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    return {"ok": True, **telemetry.get_tool_history(offset=offset, limit=limit)}
+
+
+@app.get("/telemetry/policy_denials")
+def telemetry_policy_denials(offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    return {"ok": True, **telemetry.get_policy_denials(offset=offset, limit=limit)}
+
+
+@app.get("/telemetry/error_counters")
+def telemetry_error_counters():
+    return {"ok": True, "error_counters": telemetry.get_error_counters()}
+
+
+@app.get("/gui/data")
+def gui_data(
+    history_offset: int = Query(0, ge=0),
+    history_limit: int = Query(10, ge=1, le=100),
+    policy_offset: int = Query(0, ge=0),
+    policy_limit: int = Query(10, ge=1, le=100),
+):
+    return {
+        "ok": True,
+        "health": {"ok": True},
+        "history": telemetry.get_tool_history(offset=history_offset, limit=history_limit),
+        "policy_denials": telemetry.get_policy_denials(offset=policy_offset, limit=policy_limit),
+        "error_counters": telemetry.get_error_counters(),
+        "processes": {"items": process_mcp.active_processes_snapshot()},
+    }
+
+
 def _model_schema(model: type[BaseModel]) -> dict:
     if hasattr(model, "model_json_schema"):
         return model.model_json_schema()
@@ -365,7 +398,11 @@ def tools_list():
     return {"ok": True, "minimal_mode": MCP_MINIMAL_MODE, "tools": tools}
 
 
-if __name__ == "__main__":
+def main() -> None:
     import uvicorn
 
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
+
+
+if __name__ == "__main__":
+    main()
