@@ -309,6 +309,11 @@ def tools_list():
     return {"ok": True, "tools": tools}
 
 
-if __name__ == "__main__":
+def run() -> None:
     import uvicorn
+
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
+
+
+if __name__ == "__main__":
+    run()
