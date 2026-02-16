@@ -5,27 +5,42 @@ import sys
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from server.config import MCP_HOST, MCP_PORT, MCP_MINIMAL_MODE
 from server.tools import shell, fs, git_tools, excel_mcp, search_mcp, process_mcp, json_tools, zip_tools
 from server.tool_catalog import enrich_tool_definition, tool_in_minimal_mode
 
 app = FastAPI(title="Local MCP Server for Codex")
+_UI_DIR = Path(__file__).resolve().parent / "ui"
+app.mount("/ui", StaticFiles(directory=str(_UI_DIR)), name="ui")
+
+
+def _execute_tool(name: str, method: str, path: str, payload: dict | None, fn):
+    try:
+        result = fn()
+    except Exception as e:
+        result = {"ok": False, "error": str(e)}
+    telemetry.record_tool_call(name, method, path, payload, result)
+    return result
+
+
+TOOLS_CATALOG_VERSION = "1"
 
 @app.get("/", include_in_schema=False)
 def root():
-    """Landing page: send humans to the interactive API docs (Swagger UI)."""
-    return RedirectResponse(url="/docs")
+    return FileResponse(_UI_DIR / "index.html")
+
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return _execute_tool("health", "GET", "/health", None, lambda: {"ok": True})
 
 
 class ShellExecRequest(BaseModel):
-    cmd: str
+    cmd: str | list[str]
     cwd: str | None = None
     env: dict | None = None
     timeout_s: int = 60
@@ -33,11 +48,8 @@ class ShellExecRequest(BaseModel):
 
 @app.post("/shell/exec")
 def shell_exec(req: ShellExecRequest):
-    """Execute a shell command and return structured output."""
-    try:
-        return shell.exec_cmd(req.cmd, cwd=req.cwd, env=req.env, timeout_s=req.timeout_s)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    payload = req.model_dump()
+    return _execute_tool("shell.exec", "POST", "/shell/exec", payload, lambda: shell.exec_cmd(**payload))
 
 
 class FSReadRequest(BaseModel):
@@ -47,8 +59,8 @@ class FSReadRequest(BaseModel):
 
 @app.post("/fs/read")
 def fs_read(req: FSReadRequest):
-    """Read a file and return its content."""
-    return fs.read(req.path, max_bytes=req.max_bytes)
+    payload = req.model_dump()
+    return _execute_tool("fs.read", "POST", "/fs/read", payload, lambda: fs.read(**payload))
 
 
 class FSWriteRequest(BaseModel):
@@ -59,8 +71,8 @@ class FSWriteRequest(BaseModel):
 
 @app.post("/fs/write")
 def fs_write(req: FSWriteRequest):
-    """Write content to a file."""
-    return fs.write(req.path, req.content, req.mode)
+    payload = req.model_dump()
+    return _execute_tool("fs.write", "POST", "/fs/write", payload, lambda: fs.write(**payload))
 
 
 class FSListRequest(BaseModel):
@@ -71,8 +83,10 @@ class FSListRequest(BaseModel):
 
 @app.post("/fs/list")
 def fs_list(req: FSListRequest):
-    max_entries = req.max_entries if req.max_entries is not None else 2000
-    return fs.list_dir(req.path, recursive=req.recursive, max_entries=max_entries)
+    payload = req.model_dump()
+    max_entries = payload.pop("max_entries")
+    payload["max_entries"] = max_entries if max_entries is not None else 2000
+    return _execute_tool("fs.list", "POST", "/fs/list", payload, lambda: fs.list_dir(**payload))
 
 
 class FSStatRequest(BaseModel):
@@ -81,7 +95,8 @@ class FSStatRequest(BaseModel):
 
 @app.post("/fs/stat")
 def fs_stat(req: FSStatRequest):
-    return fs.stat(req.path)
+    payload = req.model_dump()
+    return _execute_tool("fs.stat", "POST", "/fs/stat", payload, lambda: fs.stat(**payload))
 
 
 class GitRequest(BaseModel):
@@ -90,12 +105,14 @@ class GitRequest(BaseModel):
 
 @app.post("/git/status")
 def git_status(req: GitRequest):
-    return git_tools.git_status(cwd=req.cwd)
+    payload = req.model_dump()
+    return _execute_tool("git.status", "POST", "/git/status", payload, lambda: git_tools.git_status(**payload))
 
 
 @app.post("/git/diff")
 def git_diff(req: GitRequest):
-    return git_tools.git_diff(cwd=req.cwd)
+    payload = req.model_dump()
+    return _execute_tool("git.diff", "POST", "/git/diff", payload, lambda: git_tools.git_diff(**payload))
 
 
 class GitCommitRequest(BaseModel):
@@ -105,7 +122,8 @@ class GitCommitRequest(BaseModel):
 
 @app.post("/git/commit")
 def git_commit(req: GitCommitRequest):
-    return git_tools.git_commit(req.message, cwd=req.cwd)
+    payload = req.model_dump()
+    return _execute_tool("git.commit", "POST", "/git/commit", payload, lambda: git_tools.git_commit(payload["message"], cwd=payload.get("cwd")))
 
 
 class SearchRequest(BaseModel):
@@ -120,19 +138,26 @@ class SearchRequest(BaseModel):
 
 @app.post("/search/rg")
 def search_rg(req: SearchRequest):
-    return search_mcp.rg_search(
-        req.pattern,
-        path=req.path or ".",
-        glob=req.glob,
-        case_sensitive=req.case_sensitive,
-        fixed_strings=req.fixed_strings,
-        max_results=req.max_results,
-        timeout_s=req.timeout_s,
+    payload = req.model_dump()
+    return _execute_tool(
+        "search.rg",
+        "POST",
+        "/search/rg",
+        payload,
+        lambda: search_mcp.rg_search(
+            payload["pattern"],
+            path=payload["path"] or ".",
+            glob=payload["glob"],
+            case_sensitive=payload["case_sensitive"],
+            fixed_strings=payload["fixed_strings"],
+            max_results=payload["max_results"],
+            timeout_s=payload["timeout_s"],
+        ),
     )
 
 
 class ProcessStartRequest(BaseModel):
-    cmd: str
+    cmd: str | list[str]
     cwd: str | None = None
     env: dict | None = None
     capture_output: bool = True
@@ -140,7 +165,8 @@ class ProcessStartRequest(BaseModel):
 
 @app.post("/process/start")
 def process_start(req: ProcessStartRequest):
-    return process_mcp.start(req.cmd, cwd=req.cwd, env=req.env, capture_output=req.capture_output)
+    payload = req.model_dump()
+    return _execute_tool("process.start", "POST", "/process/start", payload, lambda: process_mcp.start(**payload))
 
 
 class ProcessStatusRequest(BaseModel):
@@ -149,7 +175,8 @@ class ProcessStatusRequest(BaseModel):
 
 @app.post("/process/status")
 def process_status(req: ProcessStatusRequest):
-    return process_mcp.status(req.pid)
+    payload = req.model_dump()
+    return _execute_tool("process.status", "POST", "/process/status", payload, lambda: process_mcp.status(**payload))
 
 
 class ProcessKillRequest(BaseModel):
@@ -160,7 +187,8 @@ class ProcessKillRequest(BaseModel):
 
 @app.post("/process/kill")
 def process_kill(req: ProcessKillRequest):
-    return process_mcp.kill(req.pid, force=req.force, timeout_s=req.timeout_s)
+    payload = req.model_dump()
+    return _execute_tool("process.kill", "POST", "/process/kill", payload, lambda: process_mcp.kill(**payload))
 
 
 class ProcessReadRequest(BaseModel):
@@ -172,12 +200,13 @@ class ProcessReadRequest(BaseModel):
 
 @app.post("/process/read")
 def process_read(req: ProcessReadRequest):
-    return process_mcp.read(req.pid, stream=req.stream, max_bytes=req.max_bytes, tail=req.tail)
+    payload = req.model_dump()
+    return _execute_tool("process.read", "POST", "/process/read", payload, lambda: process_mcp.read(**payload))
 
 
 @app.post("/process/list")
 def process_list():
-    return process_mcp.list_processes()
+    return _execute_tool("process.list", "POST", "/process/list", {}, process_mcp.list_processes)
 
 
 class JsonPatchRequest(BaseModel):
@@ -188,7 +217,14 @@ class JsonPatchRequest(BaseModel):
 
 @app.post("/json/patch")
 def json_patch(req: JsonPatchRequest):
-    return json_tools.patch_file(req.path, req.patch, create_if_missing=req.create_if_missing)
+    payload = req.model_dump()
+    return _execute_tool(
+        "json.patch",
+        "POST",
+        "/json/patch",
+        payload,
+        lambda: json_tools.patch_file(payload["path"], payload["patch"], create_if_missing=payload["create_if_missing"]),
+    )
 
 
 class ZipPackRequest(BaseModel):
@@ -199,7 +235,8 @@ class ZipPackRequest(BaseModel):
 
 @app.post("/zip/pack")
 def zip_pack(req: ZipPackRequest):
-    return zip_tools.pack(req.paths, req.dest_path, overwrite=req.overwrite)
+    payload = req.model_dump()
+    return _execute_tool("zip.pack", "POST", "/zip/pack", payload, lambda: zip_tools.pack(**payload))
 
 
 class ZipUnpackRequest(BaseModel):
@@ -210,7 +247,8 @@ class ZipUnpackRequest(BaseModel):
 
 @app.post("/zip/unpack")
 def zip_unpack(req: ZipUnpackRequest):
-    return zip_tools.unpack(req.zip_path, req.dest_dir, overwrite=req.overwrite)
+    payload = req.model_dump()
+    return _execute_tool("zip.unpack", "POST", "/zip/unpack", payload, lambda: zip_tools.unpack(**payload))
 
 
 class ExcelInspectRequest(BaseModel):
@@ -219,7 +257,8 @@ class ExcelInspectRequest(BaseModel):
 
 @app.post("/excel/inspect")
 def excel_inspect(req: ExcelInspectRequest):
-    return excel_mcp.inspect(req.workbook_path)
+    payload = req.model_dump()
+    return _execute_tool("excel.inspect", "POST", "/excel/inspect", payload, lambda: excel_mcp.inspect(payload["workbook_path"]))
 
 
 class ExcelReadRequest(BaseModel):
@@ -231,7 +270,8 @@ class ExcelReadRequest(BaseModel):
 
 @app.post("/excel/read_range")
 def excel_read_range(req: ExcelReadRequest):
-    return excel_mcp.read_range(req.workbook_path, req.sheet, req.a1_range, req.top_n)
+    payload = req.model_dump()
+    return _execute_tool("excel.read_range", "POST", "/excel/read_range", payload, lambda: excel_mcp.read_range(**payload))
 
 
 class ExcelPreviewRequest(BaseModel):
@@ -243,12 +283,14 @@ class ExcelPreviewRequest(BaseModel):
 
 @app.post("/excel/preview_write")
 def excel_preview(req: ExcelPreviewRequest):
-    return excel_mcp.preview_write(req.workbook_path, req.sheet, req.a1_range, req.values)
+    payload = req.model_dump()
+    return _execute_tool("excel.preview_write", "POST", "/excel/preview_write", payload, lambda: excel_mcp.preview_write(**payload))
 
 
 @app.post("/excel/commit_write")
 def excel_commit(req: ExcelPreviewRequest):
-    return excel_mcp.commit_write(req.workbook_path, req.sheet, req.a1_range, req.values)
+    payload = req.model_dump()
+    return _execute_tool("excel.commit_write", "POST", "/excel/commit_write", payload, lambda: excel_mcp.commit_write(**payload))
 
 
 class ExcelFindRequest(BaseModel):
@@ -263,14 +305,21 @@ class ExcelFindRequest(BaseModel):
 
 @app.post("/excel/find")
 def excel_find(req: ExcelFindRequest):
-    return excel_mcp.find(
-        req.workbook_path,
-        req.query,
-        sheet=req.sheet,
-        a1_range=req.a1_range,
-        match_case=req.match_case,
-        exact=req.exact,
-        limit=req.limit,
+    payload = req.model_dump()
+    return _execute_tool(
+        "excel.find",
+        "POST",
+        "/excel/find",
+        payload,
+        lambda: excel_mcp.find(
+            payload["workbook_path"],
+            payload["query"],
+            sheet=payload["sheet"],
+            a1_range=payload["a1_range"],
+            match_case=payload["match_case"],
+            exact=payload["exact"],
+            limit=payload["limit"],
+        ),
     )
 
 
@@ -318,4 +367,5 @@ def tools_list():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)

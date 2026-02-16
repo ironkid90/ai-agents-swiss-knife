@@ -4,42 +4,25 @@ from pathlib import Path
 from typing import Dict, List
 
 from ..config import ALLOWED_BASE_DIR
-
-
-def _resolve_path(path: str) -> Path:
-    p = Path(path)
-    if not p.is_absolute():
-        p = (ALLOWED_BASE_DIR / p).resolve()
-    else:
-        p = p.resolve()
-    if not str(p).startswith(str(ALLOWED_BASE_DIR.resolve())):
-        raise PermissionError("Path is outside allowed base directory")
-    return p
+from .common.pathing import resolve_in_allowed_base
+from .common.results import error, from_exception, success
 
 
 def pack(paths: List[str], dest_path: str, overwrite: bool = False) -> Dict[str, object]:
-    """
-    Pack files/directories into a zip archive.
-    """
     if not paths:
-        return {"ok": False, "error": "empty_paths"}
-    try:
-        dest = _resolve_path(dest_path)
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-    if dest.exists() and not overwrite:
-        return {"ok": False, "error": "dest_exists"}
-    dest.parent.mkdir(parents=True, exist_ok=True)
+        return error("invalid_path", "At least one source path is required.")
 
-    base = ALLOWED_BASE_DIR.resolve()
-    count = 0
     try:
+        dest = resolve_in_allowed_base(dest_path)
+        if dest.exists() and not overwrite:
+            return error("permission_denied", f"Destination already exists: {dest_path}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        base = ALLOWED_BASE_DIR.resolve()
+        count = 0
         with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for item in paths:
-                try:
-                    p = _resolve_path(item)
-                except Exception as e:
-                    return {"ok": False, "error": str(e)}
+                p = resolve_in_allowed_base(item)
                 if p.is_file():
                     arcname = str(p.resolve().relative_to(base))
                     zf.write(p, arcname)
@@ -52,35 +35,29 @@ def pack(paths: List[str], dest_path: str, overwrite: bool = False) -> Dict[str,
                             zf.write(fp, arcname)
                             count += 1
                 else:
-                    return {"ok": False, "error": "unsupported_path"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-    return {"ok": True, "path": str(dest), "count": count}
+                    return error("not_found", f"Source path not found: {item}")
+        return success(path=str(dest), count=count)
+    except Exception as exc:
+        return from_exception(exc)
 
 
 def unpack(zip_path: str, dest_dir: str, overwrite: bool = False) -> Dict[str, object]:
-    """
-    Unpack a zip archive to a destination directory.
-    """
     try:
-        src = _resolve_path(zip_path)
-        dest = _resolve_path(dest_dir)
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-    if not src.exists():
-        return {"ok": False, "error": "not_found"}
-    dest.mkdir(parents=True, exist_ok=True)
+        src = resolve_in_allowed_base(zip_path)
+        dest = resolve_in_allowed_base(dest_dir)
+        if not src.exists():
+            return error("not_found", f"Archive not found: {zip_path}")
 
-    count = 0
-    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        count = 0
+        dest_resolved = dest.resolve()
         with zipfile.ZipFile(src, "r") as zf:
             for member in zf.infolist():
                 target = (dest / member.filename).resolve()
-                if not str(target).startswith(str(dest.resolve())):
-                    return {"ok": False, "error": "invalid_member_path"}
+                if not str(target).startswith(str(dest_resolved)):
+                    return error("invalid_path", f"Archive member escapes destination: {member.filename}")
                 if target.exists() and not overwrite:
-                    return {"ok": False, "error": "dest_exists"}
+                    return error("permission_denied", f"Destination file already exists: {target}")
                 if member.is_dir():
                     target.mkdir(parents=True, exist_ok=True)
                     continue
@@ -88,7 +65,7 @@ def unpack(zip_path: str, dest_dir: str, overwrite: bool = False) -> Dict[str, o
                 with zf.open(member, "r") as src_f, target.open("wb") as dst_f:
                     dst_f.write(src_f.read())
                 count += 1
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
-    return {"ok": True, "path": str(dest), "count": count}
+        return success(path=str(dest), count=count)
+    except Exception as exc:
+        return from_exception(exc)
