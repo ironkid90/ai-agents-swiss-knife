@@ -1,20 +1,9 @@
 import copy
 import json
-from pathlib import Path
 from typing import Any, Dict, List
 
-from ..config import ALLOWED_BASE_DIR
-
-
-def _resolve_path(path: str) -> Path:
-    p = Path(path)
-    if not p.is_absolute():
-        p = (ALLOWED_BASE_DIR / p).resolve()
-    else:
-        p = p.resolve()
-    if not str(p).startswith(str(ALLOWED_BASE_DIR.resolve())):
-        raise PermissionError("Path is outside allowed base directory")
-    return p
+from .common.pathing import resolve_in_allowed_base
+from .common.results import error, from_exception, success
 
 
 def _decode_token(token: str) -> str:
@@ -141,36 +130,23 @@ def _apply_op(doc: Any, op: Dict[str, Any]) -> Any:
 
 
 def patch_file(path: str, patch_ops: List[Dict[str, Any]], create_if_missing: bool = False) -> Dict[str, object]:
-    """
-    Apply a JSON Patch (RFC 6902) to a JSON file.
-    """
     if not isinstance(patch_ops, list):
-        return {"ok": False, "error": "invalid_patch"}
-    try:
-        p = _resolve_path(path)
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return error("invalid_path", "Patch body must be a list of RFC 6902 operations.")
 
-    if not p.exists():
-        if not create_if_missing:
-            return {"ok": False, "error": "not_found"}
-        doc: Any = {}
-    else:
-        try:
+    try:
+        p = resolve_in_allowed_base(path)
+        if not p.exists():
+            if not create_if_missing:
+                return error("not_found", f"JSON file not found: {path}")
+            doc: Any = {}
+        else:
             with p.open("r", encoding="utf-8") as f:
                 doc = json.load(f)
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
 
-    try:
         for op in patch_ops:
             doc = _apply_op(doc, op)
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
-    try:
         p.write_text(json.dumps(doc, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-    return {"ok": True, "path": str(p)}
+        return success(path=str(p))
+    except Exception as exc:
+        return from_exception(exc, default_code="invalid_path")
