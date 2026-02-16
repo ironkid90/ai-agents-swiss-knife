@@ -13,6 +13,8 @@ from server.tools import shell, fs, git_tools, excel_mcp, search_mcp, process_mc
 
 app = FastAPI(title="Local MCP Server for Codex")
 
+TOOLS_CATALOG_VERSION = "1"
+
 @app.get("/", include_in_schema=False)
 def root():
     """Landing page: send humans to the interactive API docs (Swagger UI)."""
@@ -24,7 +26,7 @@ def health():
 
 
 class ShellExecRequest(BaseModel):
-    cmd: str
+    cmd: str | list[str]
     cwd: str | None = None
     env: dict | None = None
     timeout_s: int = 60
@@ -131,7 +133,7 @@ def search_rg(req: SearchRequest):
 
 
 class ProcessStartRequest(BaseModel):
-    cmd: str
+    cmd: str | list[str]
     cwd: str | None = None
     env: dict | None = None
     capture_output: bool = True

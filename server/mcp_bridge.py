@@ -2,12 +2,15 @@ import json
 import os
 import sys
 from typing import Any, Dict, Optional
-from urllib import request, error
+from urllib import error, request
+
+from server.mcp_transport import MCPTransport
 
 BASE_URL = os.environ.get("MCP_BASE_URL", "http://localhost:8000").rstrip("/")
 SERVER_NAME = "ai-agents-swiss-knife"
 SERVER_VERSION = "0.1.0"
 PROTOCOL_VERSION = "2024-11-05"
+TOOLS_CACHE_TTL_S = float(os.environ.get("MCP_TOOLS_CACHE_TTL_S", "5"))
 
 
 def _http_json(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -20,13 +23,18 @@ def _http_json(method: str, path: str, payload: Optional[Dict[str, Any]] = None)
     try:
         with request.urlopen(req, timeout=10) as resp:
             raw = resp.read().decode("utf-8")
-            return json.loads(raw)
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"ok": False, "error": "invalid_backend_response", "raw": raw}
     except error.HTTPError as e:
+        status = getattr(e, "code", None)
         try:
             raw = e.read().decode("utf-8")
-            return {"ok": False, "error": raw}
+            parsed = json.loads(raw)
+            return {"ok": False, "error": "http_error", "status": status, "response": parsed}
         except Exception:
-            return {"ok": False, "error": str(e)}
+            return {"ok": False, "error": "http_error", "status": status, "response": str(e)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -64,94 +72,44 @@ def _send_message(obj: Dict[str, Any]) -> None:
     stdout.flush()
 
 
-def _get_tools_cache() -> Dict[str, Dict[str, Any]]:
+def _fetch_tools() -> Dict[str, Dict[str, Any]]:
     resp = _http_json("GET", "/tools/list")
-    tools = {}
+    tools: Dict[str, Dict[str, Any]] = {}
     if resp.get("ok"):
         for tool in resp.get("tools", []):
             tools[tool["name"]] = tool
     return tools
 
 
-def _tools_list(tools_cache: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-    tools = []
-    for tool in tools_cache.values():
-        if tool.get("path") in ("/health", "/tools/list", "/openapi.json"):
-            continue
-        tools.append(
-            {
-                "name": tool.get("name"),
-                "description": tool.get("description") or "",
-                "inputSchema": tool.get("request_schema") or {"type": "object"},
-            }
-        )
-    return {"tools": tools}
-
-
-def _tool_call(
-    tools_cache: Dict[str, Dict[str, Any]],
-    name: str,
-    arguments: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
-    tool = tools_cache.get(name)
-    if not tool:
-        return {"content": [{"type": "text", "text": json.dumps({"ok": False, "error": "tool_not_found"})}]}
+def _call_tool(tool: Dict[str, Any], arguments: Dict[str, Any]) -> Dict[str, Any]:
     method = tool.get("method", "POST")
     path = tool.get("path", "")
-    payload = arguments or {}
     if method == "GET":
-        result = _http_json("GET", path)
-    else:
-        result = _http_json("POST", path, payload)
-    return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=True)}]}
-
-
-def _handle_request(req: Dict[str, Any], tools_cache: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    method = req.get("method")
-    req_id = req.get("id")
-    params = req.get("params") or {}
-
-    if method == "initialize":
-        result = {
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
-        }
-        return {"jsonrpc": "2.0", "id": req_id, "result": result}
-
-    if method == "tools/list":
-        result = _tools_list(tools_cache)
-        return {"jsonrpc": "2.0", "id": req_id, "result": result}
-
-    if method == "tools/call":
-        name = params.get("name")
-        arguments = params.get("arguments")
-        result = _tool_call(tools_cache, name, arguments)
-        return {"jsonrpc": "2.0", "id": req_id, "result": result}
-
-    if method == "ping":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
-
-    if method == "shutdown":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
-
-    return None
+        return _http_json("GET", path)
+    return _http_json("POST", path, arguments)
 
 
 def main() -> None:
-    tools_cache = _get_tools_cache()
+    transport = MCPTransport(
+        server_name=SERVER_NAME,
+        server_version=SERVER_VERSION,
+        protocol_version=PROTOCOL_VERSION,
+        tools_provider=_fetch_tools,
+        tools_caller=_call_tool,
+        tools_cache_ttl_s=TOOLS_CACHE_TTL_S,
+        enable_resources=False,
+        enable_prompts=False,
+    )
+
     while True:
         req = _read_message()
         if req is None:
             break
-        if req.get("method") == "shutdown":
-            resp = _handle_request(req, tools_cache)
-            if resp:
-                _send_message(resp)
-            break
-        resp = _handle_request(req, tools_cache)
+        resp = transport.handle_request(req)
         if resp:
             _send_message(resp)
+        if req.get("method") == "shutdown":
+            break
 
 
 if __name__ == "__main__":
