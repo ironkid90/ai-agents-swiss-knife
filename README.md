@@ -1,4 +1,4 @@
-## AI Agent's Swiss Knife
+# AI Agent's Swiss Knife
 
 A local **MCP-oriented tool server** for coding agents.
 
@@ -28,6 +28,7 @@ From this repository root:
 
 ```bash
 python -m pip install .
+# or for development:
 pip install -e .
 ```
 
@@ -63,14 +64,11 @@ Defaults:
 - Port: `8000`
 - UI: `http://127.0.0.1:8000/`
 - OpenAPI docs: `http://127.0.0.1:8000/docs`
-# or
-python -m server.mcp_server
-```
 
-Open the GUI in your browser at `http://localhost:8080/` (redirects to Swagger UI at
+Open the GUI in your browser at `http://localhost:8000/` (redirects to Swagger UI at
 `/docs`). You can also use `/redoc`.
 
-By default, the server listens on `127.0.0.1:8080`. You can change the host/port with
+By default, the server listens on `127.0.0.1:8000`. You can change the host/port with
 the `MCP_HOST` and `MCP_PORT` environment variables.
 
 ### 3) Point Codex CLI to the bridge
@@ -82,22 +80,21 @@ Add:
 [mcp_servers.ai_agents_swiss_knife]
 command = "ai-agents-swiss-knife-bridge"
 env = { MCP_BASE_URL = "http://127.0.0.1:8000" }
-```bash
-export MCP_ALLOWED_BASE=/path/to/workspace
-ai-agents-swiss-knife-server
-# or
-python -m server.mcp_server
+startup_timeout_sec = 60
 ```
 
-If you prefer module form:
+If you prefer module form (e.g., using a specific python venv):
 
 ```toml
 [mcp_servers.ai_agents_swiss_knife]
-command = "python"
+cwd = 'C:\path\to\ai-agents-swiss-knife'
+command = 'C:\path\to\venv\Scripts\python.exe'
 args = ["-m", "server.mcp_bridge"]
-cwd = "/absolute/path/to/ai-agents-swiss-knife"
 env = { MCP_BASE_URL = "http://127.0.0.1:8000" }
+startup_timeout_sec = 60
 ```
+
+> **Note**: `startup_timeout_sec` is recommended (e.g. 60s) to allow sufficient time for the bridge handshake.
 
 ---
 
@@ -106,6 +103,7 @@ env = { MCP_BASE_URL = "http://127.0.0.1:8000" }
 - `MCP_ALLOWED_BASE`: sandbox root for path operations (default: process cwd)
 - `MCP_HOST`: bind host (default: `127.0.0.1`)
 - `MCP_PORT`: bind port (default: `8000`)
+- `MCP_BASE_URL`: bridge connection target (default: `http://127.0.0.1:8000`)
 - `MCP_MAX_READ_BYTES`: default `/fs/read` size cap
 - `MCP_EXCEL_LOCK_TIMEOUT_S`: Excel write lock timeout
 - `MCP_MINIMAL_MODE`: `1/true` to expose only core bundle in `/tools/list`
@@ -118,6 +116,32 @@ export MCP_ALLOWED_BASE=/path/to/workspace
 export MCP_MINIMAL_MODE=1
 ai-agents-swiss-knife-server
 ```
+
+---
+
+## Troubleshooting
+
+### Connection Timeouts
+
+If your agent (Codex, Gemini) times out connecting to the MCP server:
+
+1.  Ensure the server is running on port 8000: `netstat -ano | findstr :8000`.
+2.  Increase the client timeout (e.g. `startup_timeout_sec = 60` in `config.toml`).
+3.  Check `MCP_BASE_URL` matches the running server (default `http://127.0.0.1:8000`).
+
+### Windows Path Issues
+
+- Use single quotes in TOML/Python strings for Windows paths to avoid escaping issues (e.g. `cwd = 'C:\Users\...'`).
+- Ensure the bridge is executed with the correct python interpreter from your virtual environment.
+
+---
+
+## Recent Fixes (v0.2.0+)
+
+- **MCP Bridge**: Fixed `base_url` propagation logic in `mcp_bridge.py`.
+- **Protocol Compliance**: Added proper handling for `notifications/initialized` to fix client handshakes.
+- **Port Standardization**: Unified default port to 8000 across documentation and code.
+- **Shell Compatibility**: Improved PowerShell profile handling and recursion guards.
 
 ---
 
@@ -158,7 +182,7 @@ ai-agents-swiss-knife-bridge --print-config
 | Gemini CLI | MCP over stdio via `ai-agents-swiss-knife-bridge` | User MCP config (copy from `configs/clients/gemini-cli.mcp.json`) | Depends on CLI MCP support version; tool output is returned as JSON text content. |
 | Generic MCP JSON-RPC client | MCP JSON-RPC over stdio via bridge | Client-specific JSON config (use `configs/clients/generic-mcp-jsonrpc-stdio.json`) | This repo currently exposes MCP through stdio bridge only (not Streamable HTTP MCP). |
 
-### Windows service
+---
 
 ## Dashboard and telemetry
 
@@ -233,7 +257,7 @@ Install editable:
 
 ```bash
 python -m pip install -e .
-curl -X POST http://localhost:8080/shell/exec \
+curl -X POST http://localhost:8000/shell/exec \
   -H "Content-Type: application/json" \
   -d '{"cmd":"ls -la", "cwd":"."}'
 ```

@@ -113,6 +113,9 @@ class MCPTransport:
             }
             return {"jsonrpc": "2.0", "id": req_id, "result": result}
 
+        if method == "notifications/initialized":
+            return None
+
         if method == "tools/list":
             return {"jsonrpc": "2.0", "id": req_id, "result": self._tools_list()}
 

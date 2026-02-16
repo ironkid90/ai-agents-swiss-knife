@@ -8,3 +8,6 @@ dist/
 logs/
 scripts/winsw/*.exe
 scripts/winsw/ai-agents-swiss-knife.xml
+.venv/
+*.egg-info/
+build/

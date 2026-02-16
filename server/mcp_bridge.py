@@ -3,11 +3,11 @@ import json
 import os
 import sys
 from typing import Any, Dict, Optional
-from urllib import error, request
+from urllib import error, request, parse
 
 from server.mcp_transport import MCPTransport
 
-DEFAULT_BASE_URL = "http://localhost:8080"
+DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 SERVER_NAME = "ai-agents-swiss-knife"
 SERVER_VERSION = "0.1.0"
 PROTOCOL_VERSION = "2024-11-05"
@@ -85,8 +85,8 @@ def _send_message(obj: Dict[str, Any]) -> None:
     stdout.flush()
 
 
-def _fetch_tools() -> Dict[str, Dict[str, Any]]:
-    resp = _http_json("GET", "/tools/list")
+def _fetch_tools(base_url: str) -> Dict[str, Dict[str, Any]]:
+    resp = _http_json(base_url, "GET", "/tools/list")
     tools: Dict[str, Dict[str, Any]] = {}
     if resp.get("ok"):
         for tool in resp.get("tools", []):
@@ -94,12 +94,10 @@ def _fetch_tools() -> Dict[str, Dict[str, Any]]:
     return tools
 
 
-def _call_tool(tool: Dict[str, Any], arguments: Dict[str, Any]) -> Dict[str, Any]:
+def _call_tool(base_url: str, tool: Dict[str, Any], arguments: Dict[str, Any]) -> Dict[str, Any]:
     method = tool.get("method", "POST")
     path = tool.get("path", "")
-    if method == "GET":
-        return _http_json("GET", path)
-    return _http_json("POST", path, arguments)
+    return _http_json(base_url, method, path, arguments)
 
 
 def _print_config(base_url: str) -> int:
@@ -143,13 +141,12 @@ def main() -> None:
     if args.print_config:
         raise SystemExit(_print_config(base_url))
 
-    tools_cache = _get_tools_cache(base_url)
     transport = MCPTransport(
         server_name=SERVER_NAME,
         server_version=SERVER_VERSION,
         protocol_version=PROTOCOL_VERSION,
-        tools_provider=_fetch_tools,
-        tools_caller=_call_tool,
+        tools_provider=lambda: _fetch_tools(base_url),
+        tools_caller=lambda tool, args: _call_tool(base_url, tool, args),
         tools_cache_ttl_s=TOOLS_CACHE_TTL_S,
         enable_resources=False,
         enable_prompts=False,
@@ -159,12 +156,6 @@ def main() -> None:
         req = _read_message()
         if req is None:
             break
-        if req.get("method") == "shutdown":
-            resp = _handle_request(base_url, req, tools_cache)
-            if resp:
-                _send_message(resp)
-            break
-        resp = _handle_request(base_url, req, tools_cache)
         resp = transport.handle_request(req)
         if resp:
             _send_message(resp)

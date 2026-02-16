@@ -3,7 +3,7 @@ from typing import Any
 import sys
 
 if __package__ is None or __package__ == "":
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))    
 
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse
@@ -16,7 +16,7 @@ from server import telemetry
 
 app = FastAPI(title="Local MCP Server for Codex")
 _UI_DIR = Path(__file__).resolve().parent / "ui"
-app.mount("/ui", StaticFiles(directory=str(_UI_DIR)), name="ui")
+app.mount("/ui", StaticFiles(directory=str(_UI_DIR)), name="ui")       
 
 
 def _execute_tool(name: str, method: str, path: str, payload: dict | None, fn):
@@ -24,7 +24,7 @@ def _execute_tool(name: str, method: str, path: str, payload: dict | None, fn):
         result = fn()
     except Exception as e:
         result = {"ok": False, "error": str(e)}
-    telemetry.record_tool_call(name, method, path, payload, result)
+    telemetry.record_tool_call(name, method, path, payload, result)    
     return result
 
 
@@ -373,7 +373,7 @@ def tools_list():
         {"name": "fs.list", "method": "POST", "path": "/fs/list", "description": "List directory contents", "request_schema": _model_schema(FSListRequest)},
         {"name": "fs.stat", "method": "POST", "path": "/fs/stat", "description": "Stat a file or directory", "request_schema": _model_schema(FSStatRequest)},
         {"name": "git.status", "method": "POST", "path": "/git/status", "description": "Git status", "request_schema": _model_schema(GitRequest)},
-        {"name": "git.diff", "method": "POST", "path": "/git/diff", "description": "Git diff", "request_schema": _model_schema(GitRequest)},
+        {"name": "git.diff", "method": "POST", "path": "/git/diff", "description": "Git diff", "request_schema": _model_schema(GitRequest)},  
         {"name": "git.commit", "method": "POST", "path": "/git/commit", "description": "Git commit", "request_schema": _model_schema(GitCommitRequest)},
         {"name": "search.rg", "method": "POST", "path": "/search/rg", "description": "Ripgrep search", "request_schema": _model_schema(SearchRequest)},
         {"name": "process.start", "method": "POST", "path": "/process/start", "description": "Start a process", "request_schema": _model_schema(ProcessStartRequest)},
@@ -391,7 +391,7 @@ def tools_list():
         {"name": "excel.find", "method": "POST", "path": "/excel/find", "description": "Find values", "request_schema": _model_schema(ExcelFindRequest)},
     ]
 
-    tools = [enrich_tool_definition(tool) for tool in base_tools]
+    tools = [enrich_tool_definition(tool) for tool in base_tools]      
     if MCP_MINIMAL_MODE:
         tools = [tool for tool in tools if tool_in_minimal_mode(tool["name"])]
 
@@ -400,12 +400,9 @@ def tools_list():
 
 
 def main() -> None:
-def run() -> None:
     import uvicorn
-
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
 
 
 if __name__ == "__main__":
     main()
-    run()
